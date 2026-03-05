@@ -65,7 +65,7 @@ final class BloomFilter {
         return true;
     }
 
-    private static ByteBuffer murmur128(byte[] key) {
+    private static ByteBuffer murmur128(final byte[] key) {
         final byte[] b = Hashing.murmur3_128().hashBytes(key).asBytes();
         return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
     }
@@ -79,7 +79,7 @@ final class BloomFilter {
         return buf.array();
     }
 
-    static BloomFilter deserialize(byte[] data) {
+    static BloomFilter deserialize(final byte[] data) {
         final ByteBuffer buf = ByteBuffer.wrap(data);
         final int numBits = buf.getInt();
         final int k = Byte.toUnsignedInt(buf.get());

@@ -28,11 +28,12 @@ import static java.nio.file.StandardOpenOption.READ;
  * {@link com.petwal.engine.LsmStore}'s {@code synchronized(this)} guard. A concurrent caller
  * would need {@code ch.read(buf, offset)} instead.
  */
-public final class SSTableReader implements Closeable {
+public final class SSTable implements Closeable {
 
     private static final int FOOTER_SIZE = 24;
 
-    private static final Comparator<byte[]> KEY_ORDER = (a, b) -> {
+    // For comparing SSTable keys
+    private static final Comparator<byte[]> BYTE_ARRAY_COMPARATOR = (a, b) -> {
         final int len = Math.min(a.length, b.length);
         for (int i = 0; i < len; i++) {
             final int diff = Byte.toUnsignedInt(a[i]) - Byte.toUnsignedInt(b[i]);
@@ -46,15 +47,15 @@ public final class SSTableReader implements Closeable {
     private final byte[][] indexKeys;
     private final long[] indexOffsets;
 
-    private SSTableReader(final FileChannel fileChannel, final BloomFilter bloom,
-                          final byte[][] indexKeys, final long[] indexOffsets) {
+    private SSTable(final FileChannel fileChannel, final BloomFilter bloom,
+                    final byte[][] indexKeys, final long[] indexOffsets) {
         this.fileChannel = fileChannel;
         this.bloom = bloom;
         this.indexKeys = indexKeys;
         this.indexOffsets = indexOffsets;
     }
 
-    public static SSTableReader open(final Path path) throws IOException {
+    public static SSTable open(final Path path) throws IOException {
         final FileChannel channel = FileChannel.open(path, READ);
         try {
             final long fileSize = channel.size();
@@ -68,7 +69,7 @@ public final class SSTableReader implements Closeable {
             final long bloomOffset = footer.getLong();
             final long indexOffset = footer.getLong();
             final long magic = footer.getLong();
-            if (magic != SSTableConstants.MAGIC) {
+            if (magic != SSTableConstants.MAGIC_VALUE) {
                 throw new IOException("Invalid SSTable magic in footer: " + path);
             }
 
@@ -82,7 +83,7 @@ public final class SSTableReader implements Closeable {
             final int numEntries = ByteBuffer.wrap(indexHeader).getInt();
             final byte[][] indexKeys = new byte[numEntries][];
             final long[] indexOffsets = new long[numEntries];
-            long pos = indexOffset + 4; // not final — advanced per entry
+            long pos = indexOffset + 4; // skip header
             for (int i = 0; i < numEntries; i++) {
                 final int keyLen = ByteBuffer.wrap(readChannel(channel, pos, 4)).getInt();
                 pos += 4;
@@ -92,7 +93,7 @@ public final class SSTableReader implements Closeable {
                 pos += 8;
             }
 
-            return new SSTableReader(channel, bloom, indexKeys, indexOffsets);
+            return new SSTable(channel, bloom, indexKeys, indexOffsets);
         } catch (IOException e) {
             channel.close();
             throw e;
@@ -105,20 +106,20 @@ public final class SSTableReader implements Closeable {
         }
 
         // Binary search over sorted index keys
-        int lo = 0;
-        int hi = indexKeys.length - 1;
-        while (lo <= hi) {
-            final int mid = (lo + hi) >>> 1;
-            final int cmp = KEY_ORDER.compare(indexKeys[mid], key);
+        int rangeStart = 0;
+        int rangeEnd = indexKeys.length - 1;
+        while (rangeStart <= rangeEnd) {
+            final int middleIndex = (rangeStart + rangeEnd) / 2;
+            final int compare = BYTE_ARRAY_COMPARATOR.compare(indexKeys[middleIndex], key);
 
-            if (cmp < 0) {
-                lo = mid + 1;
+            if (compare < 0) {
+                rangeStart = middleIndex + 1;
             }
-            else if (cmp > 0){
-                hi = mid - 1;
+            else if (compare > 0){
+                rangeEnd = middleIndex - 1;
             }
             else{
-                return readRecord(indexOffsets[mid]);
+                return readRecord(indexOffsets[middleIndex]);
             }
         }
         return Lookup.absent();
@@ -126,11 +127,13 @@ public final class SSTableReader implements Closeable {
 
     private Lookup readRecord(final long dataOffset) throws IOException {
         final byte[] header = readChannel(fileChannel, dataOffset, SSTableConstants.RECORD_HEADER_SIZE);
-        final ByteBuffer h = ByteBuffer.wrap(header);
-        final int keyLen = h.getInt();
-        final int valueLen = h.getInt();
+        final ByteBuffer headerBuffer = ByteBuffer.wrap(header);
+        final int keyLen = headerBuffer.getInt();
+        final int valueLen = headerBuffer.getInt();
 
-        if (isTombstone(valueLen)) return Lookup.deleted();
+        if (isTombstone(valueLen)) {
+            return Lookup.deleted();
+        }
 
         final byte[] value = readChannel(fileChannel, dataOffset + SSTableConstants.RECORD_HEADER_SIZE + keyLen, valueLen);
         return Lookup.found(value);

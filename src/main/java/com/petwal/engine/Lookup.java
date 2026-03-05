@@ -38,7 +38,7 @@ public final class Lookup {
         return new Lookup(State.FOUND, v);
     }
 
-    public boolean isFoundOrTombStone() {
+    public boolean hasValueOrTombstone() {
         return state == State.FOUND || state == State.DELETED;
     }
 
