@@ -32,16 +32,19 @@ first non-absent `Lookup` result).
 
 ```
 com.petwal
-├── Main.java                              — demo/entry-point
+├── Main.java                              — TCP server entry-point
 ├── api/KeyValueStore.java                 — public interface (put, get, delete, close)
 ├── engine/LogFormat.java                  — HEADER_SIZE=8, TOMBSTONE=-1; public static helpers
 ├── engine/Lookup.java                     — three-value result: ABSENT / DELETED / FOUND
-├── engine/LsmStore.java                   — core store; flush() is pkg-private for tests
+├── engine/LsmStore.java                   — core store; flush() is public
 ├── engine/memtable/MemTable.java          — TreeMap-backed buffer; FLUSH_THRESHOLD=4MiB
 ├── engine/memtable/Entry.java             — record(key, value); isTombstone()=value==null
 ├── engine/sstable/BloomFilter.java        — pkg-private; ~1% FPR, Murmur3-128 double-hashing
 ├── engine/sstable/SSTableWriter.java      — static flush(MemTable, Path) → SSTableReader
-└── engine/sstable/SSTableReader.java      — open(Path), get(key) with dense index + bloom guard
+├── engine/sstable/SSTableReader.java      — open(Path), get(key) with dense index + bloom guard
+├── server/LsmServer.java                  — TCP server; binds on port 7777, accepts client connections
+├── server/ClientHandler.java              — per-connection handler; parses text protocol commands
+└── server/LsmClientExample.java          — example client demonstrating the TCP protocol
 ```
 
 ---
@@ -121,19 +124,74 @@ Offset (relative)   Field
 
 ---
 
-## Build & test
+## Coding standards
 
-```bash
-./gradlew compileJava         # compile only
-./gradlew cleanTest test      # run all 12 tests (LsmStoreTest)
-./gradlew run                 # run Main demo
-```
+### Immutability / `final`
+
+- All fields: `private final` (mutable state must be justified and commented).
+- All method parameters: `final`.
+- Local variables: `final` unless the variable is explicitly reassigned in a loop or after
+  declaration.
+- All top-level classes: `final` unless designed for extension.
+
+### Declaration spacing
+
+- Exactly one space between the type and the variable name: `String name = ...;`
+- Exactly one space around `=`: `int port = 7777;`
+- No alignment padding across multiple declarations — single consistent space only.
+
+### Braces — always required
+
+- Every `if`, `else`, `for`, `while`, and `do` body must use braces, even for single statements.
+- Opening brace on the same line as the statement, with a space before it: `if (condition) {`
+- Closing brace on its own line.
+
+### Classes
+
+- Mark every class `final` unless explicitly designed for subclassing.
+- Use `record` for pure data carriers.
+- Utility classes (no instance state): private constructor, all-static methods.
+
+### Switch
+
+- Prefer switch expressions (`->`) over switch statements.
+- Multi-statement cases use `{ ... yield ...; }` blocks.
+
+### Imports
+
+- No wildcard imports except `StandardOpenOption.*`.
+- Static imports allowed for constants used frequently (e.g., `UTF_8`, `comparing`).
+
+### Naming
+
+- Classes: PascalCase; constants: UPPER_SNAKE_CASE; methods/variables: camelCase.
+- Boolean methods prefixed with `is`, `has`, `should`, or `might`.
+- Log/error messages prefixed with `[ClassName]` in square brackets.
+
+### Javadoc
+
+- All public classes and public methods must have Javadoc.
+- Document design decisions in `<h3>` subsections within class Javadoc.
+- Inline comments only where the logic is non-obvious.
+
+### Exception handling
+
+- Propagate `IOException` with `throws`; do not swallow.
+- Use try-with-resources for all `Closeable` resources.
+- On catch-and-rethrow, release resources before re-throwing.
+
+### Numeric literals
+
+- Use underscore separators in large hex/long literals: `0x5353_5441_424C_4500L`.
 
 ---
 
-## Dependencies
+## Build & test
 
-| Scope | Artifact |
-|-------|----------|
-| compile | `com.google.guava:guava:33.3.1-jre` (Murmur3 hashing only) |
-| test   | `org.junit.jupiter:junit-jupiter` via `junit-bom:5.10.0` |
+```bash
+./gradlew compileJava
+./gradlew cleanTest test
+./gradlew run
+```
+
+---

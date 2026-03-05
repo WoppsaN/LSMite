@@ -54,7 +54,7 @@ public final class LsmStore implements KeyValueStore {
     }
 
     @Override
-    public synchronized void put(byte[] key, byte[] value) throws IOException {
+    public synchronized void put(final byte[] key, final byte[] value) throws IOException {
         memTable.put(Arrays.copyOf(key, key.length), value);
         if (memTable.shouldFlush()) {
             flush();
@@ -62,7 +62,7 @@ public final class LsmStore implements KeyValueStore {
     }
 
     @Override
-    public synchronized byte[] get(byte[] key) throws IOException {
+    public synchronized byte[] get(final byte[] key) throws IOException {
         Lookup result = memTable.get(key);
         if (result.hasValueOrTombstone()) {
             return result.value();
@@ -78,7 +78,7 @@ public final class LsmStore implements KeyValueStore {
     }
 
     @Override
-    public synchronized void delete(byte[] key) throws IOException {
+    public synchronized void delete(final byte[] key) throws IOException {
         memTable.delete(Arrays.copyOf(key, key.length));
         if (memTable.shouldFlush()){
             flush();
@@ -87,15 +87,20 @@ public final class LsmStore implements KeyValueStore {
 
     @Override
     public synchronized void close() throws IOException {
-        for (SSTable sst : ssTables) sst.close();
+        for (final SSTable sst : ssTables) {
+            sst.close();
+        }
     }
 
     /**
      * Flushes the current MemTable to a new SSTable file.
-     * Package-private so tests can trigger flush without writing 4 MiB of data.
+     * Public so {@link com.petwal.server.LsmServer} can flush on shutdown.
+     * Tests in {@code com.petwal.engine} also call this directly.
      */
-    synchronized void flush() throws IOException {
-        if (memTable.isEmpty()) return;
+    public synchronized void flush() throws IOException {
+        if (memTable.isEmpty()) {
+            return;
+        }
         final Path sstPath = directory.resolve(String.format("sst-%05d.sst", currentSSTId++));
         final SSTable reader = SSTableWriter.flush(memTable, sstPath);
         ssTables.addFirst(reader); // prepend: newest first

@@ -1,41 +1,35 @@
 package com.petwal;
 
-import com.petwal.api.KeyValueStore;
 import com.petwal.engine.LsmStore;
+import com.petwal.server.LsmServer;
 
-import java.io.IOException;
 import java.nio.file.Path;
 
 public class Main {
-    public static void main(String[] args) throws IOException {
-        Path dbPath = Path.of("demo-store.db");
 
-        System.out.println("=== AppendOnlyStore Demo ===");
+    private static final int DEFAULT_PORT = 7777;
+    private static final int THREAD_POOL_SIZE = 10;
+    private static final String DEFAULT_DATA_DIR = "lsmite-data";
 
-        // First session: write some data
-        try (KeyValueStore store = new LsmStore(dbPath)) {
-            store.put("hello".getBytes(), "world".getBytes());
-            store.put("foo".getBytes(), "bar".getBytes());
-            store.put("count".getBytes(), "1".getBytes());
-            System.out.println("put: hello -> world");
-            System.out.println("put: foo -> bar");
-            System.out.println("put: count -> 1");
+    public static void main(String[] args) throws Exception {
+        int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
+        String dataDir = args.length > 1 ? args[1] : DEFAULT_DATA_DIR;
 
-            /*
-            final byte[] helloVal = store.get("hello".getBytes());
-            System.out.println("get: hello -> " + new String(helloVal));
+        LsmStore store = new LsmStore(Path.of(dataDir));
+        LsmServer server = new LsmServer(store, port, THREAD_POOL_SIZE);
 
-            store.put("count".getBytes(), "2".getBytes());
-            System.out.println("put: count -> 2 (overwrite)");
+        // Invoked on SIGINT (Ctrl+C) or SIGTERM
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread(() -> {
+                    System.out.println("[Main] Shutdown signal received.");
+                    try {
+                        server.stop();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }, "lsm-shutdown"));
 
-            store.delete("foo".getBytes());
-            System.out.println("delete: foo");
-
-            final byte[] fooVal = store.get("foo".getBytes());
-            System.out.println("get: foo -> " + fooVal + " (deleted)");
-
-             */
-        }
-
+        server.start();
+        server.awaitTermination(); // block main thread until stop() is called
     }
 }
