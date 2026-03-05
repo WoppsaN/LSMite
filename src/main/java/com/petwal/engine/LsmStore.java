@@ -2,7 +2,7 @@ package com.petwal.engine;
 
 import com.petwal.api.KeyValueStore;
 import com.petwal.engine.memtable.MemTable;
-import com.petwal.engine.sstable.SSTableReader;
+import com.petwal.engine.sstable.SSTable;
 import com.petwal.engine.sstable.SSTableWriter;
 
 import java.io.IOException;
@@ -11,15 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 
 import static java.util.Comparator.comparing;
 
 /**
- * LSM-tree key-value store.
- *
- * <h3>Design decisions</h3>
+ * <h3>LSM-tree key-value store.</h3>
  * <ul>
  *   <li><b>No WAL</b>: unflushed MemTable data is lost on crash. SSTables are crash-safe
  *       ({@code CREATE_NEW} + {@code force(true)}).</li>
@@ -47,8 +44,8 @@ public final class LsmStore implements KeyValueStore {
 
     private final Path directory;
     private MemTable memTable = new MemTable();
-    private final List<SSTableReader> ssTables = new ArrayList<>(); // index 0 = newest
-    private int nextSSTId = 1;
+    private final List<SSTable> ssTables = new ArrayList<>(); // index 0 = newest
+    private int currentSSTId = 1;
 
     public LsmStore(final Path directory) throws IOException {
         this.directory = directory;
@@ -67,13 +64,13 @@ public final class LsmStore implements KeyValueStore {
     @Override
     public synchronized byte[] get(byte[] key) throws IOException {
         Lookup result = memTable.get(key);
-        if (result.isFoundOrTombStone()) {
+        if (result.hasValueOrTombstone()) {
             return result.value();
         }
 
-        for (final SSTableReader tableReader : ssTables) {
+        for (final SSTable tableReader : ssTables) {
             result = tableReader.get(key);
-            if (result.isFoundOrTombStone()) {
+            if (result.hasValueOrTombstone()) {
                 return result.value();
             }
         }
@@ -83,12 +80,14 @@ public final class LsmStore implements KeyValueStore {
     @Override
     public synchronized void delete(byte[] key) throws IOException {
         memTable.delete(Arrays.copyOf(key, key.length));
-        if (memTable.shouldFlush()) flush();
+        if (memTable.shouldFlush()){
+            flush();
+        }
     }
 
     @Override
     public synchronized void close() throws IOException {
-        for (SSTableReader sst : ssTables) sst.close();
+        for (SSTable sst : ssTables) sst.close();
     }
 
     /**
@@ -97,8 +96,8 @@ public final class LsmStore implements KeyValueStore {
      */
     synchronized void flush() throws IOException {
         if (memTable.isEmpty()) return;
-        final Path sstPath = directory.resolve(String.format("sst-%05d.sst", nextSSTId++));
-        final SSTableReader reader = SSTableWriter.flush(memTable, sstPath);
+        final Path sstPath = directory.resolve(String.format("sst-%05d.sst", currentSSTId++));
+        final SSTable reader = SSTableWriter.flush(memTable, sstPath);
         ssTables.addFirst(reader); // prepend: newest first
         memTable = new MemTable();
     }
@@ -110,23 +109,19 @@ public final class LsmStore implements KeyValueStore {
                 sstFilePaths.add(path);
             }
         }
-        // Sort ascending by name → creation order (oldest first)
-        sstFilePaths.sort(comparing(path -> path.getFileName().toString()));
+        // Sort descending (newest first)
+        sstFilePaths.sort(comparing((Path path) -> path.getFileName().toString()).reversed());
 
         int maxId = 0;
-        // Build readers list oldest→newest, then reverse so index 0 = newest
-        final List<SSTableReader> readers = new ArrayList<>();
         for (final Path path : sstFilePaths) {
-            readers.add(SSTableReader.open(path));
-            // Parse id from "sst-00001.sst" (4 prefix chars, 4 suffix chars)
-            final String name = path.getFileName().toString();
-            final int id = Integer.parseInt(name.substring(4, name.length() - 4));
-            maxId = Math.max(maxId, id);
+            ssTables.add(SSTable.open(path));
+            maxId = Math.max(maxId, parseId(path));
         }
+        currentSSTId = maxId + 1;
+    }
 
-        for (int i = readers.size() - 1; i >= 0; i--) {
-            ssTables.add(readers.get(i));
-        }
-        nextSSTId = maxId + 1;
+    private static int parseId(Path path) {
+        final String name = path.getFileName().toString();
+        return Integer.parseInt(name.substring(4, name.length() - 4));
     }
 }

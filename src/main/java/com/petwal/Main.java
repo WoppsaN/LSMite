@@ -21,6 +21,7 @@ public class Main {
             System.out.println("put: foo -> bar");
             System.out.println("put: count -> 1");
 
+            /*
             final byte[] helloVal = store.get("hello".getBytes());
             System.out.println("get: hello -> " + new String(helloVal));
 
@@ -32,6 +33,8 @@ public class Main {
 
             final byte[] fooVal = store.get("foo".getBytes());
             System.out.println("get: foo -> " + fooVal + " (deleted)");
+
+             */
         }
 
     }

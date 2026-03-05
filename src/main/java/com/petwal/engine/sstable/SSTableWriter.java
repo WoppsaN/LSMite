@@ -40,9 +40,9 @@ public final class SSTableWriter {
 
     /**
      * Writes all entries from {@code memTable} to {@code path} in sorted order
-     * and returns an {@link SSTableReader} open on the newly created file.
+     * and returns an {@link SSTable} open on the newly created file.
      */
-    public static SSTableReader flush(final MemTable memTable, final Path path) throws IOException {
+    public static SSTable flush(final MemTable memTable, final Path path) throws IOException {
         // Collect entries (already sorted by MemTable's TreeMap)
         final List<Entry> entries = new ArrayList<>();
         for (final Entry e : memTable.sortedEntries()) {
@@ -50,42 +50,42 @@ public final class SSTableWriter {
         }
 
         // Build Bloom filter
-        final BloomFilter bloom = new BloomFilter(entries.size());
+        final BloomFilter bloomFilter = new BloomFilter(entries.size());
         for (final Entry e : entries) {
-            bloom.add(e.key());
+            bloomFilter.add(e.key());
         }
 
         // First pass: compute per-record data offsets
         final long[] dataOffsets = new long[entries.size()];
-        long dataSize = 8L; // starts after magic; not final — accumulated in loop
+        long currentOffset = SSTableConstants.MAGIC_SIZE;
         for (int i = 0; i < entries.size(); i++) {
-            dataOffsets[i] = dataSize;
+            dataOffsets[i] = currentOffset;
             final Entry e = entries.get(i);
-            dataSize += SSTableConstants.RECORD_HEADER_SIZE + e.key().length;
-            if (!e.isTombstone()) {
-                dataSize += e.value().length;
-            }
+
+            final int keyLen = e.key().length;
+            final int valueLen = e.isTombstone() ? 0 : e.value().length;
+            currentOffset += SSTableConstants.RECORD_HEADER_SIZE + keyLen + valueLen;
         }
 
         // Bloom section
-        final byte[] bloomBytes = bloom.serialize();
-        final long bloomOffset = dataSize;
+        final byte[] bloomBytes = bloomFilter.serialize();
+        final long bloomOffset = currentOffset;
 
         // Index section
         final long indexOffset = bloomOffset + bloomBytes.length;
-        long indexSize = 4L; // numEntries int; not final — accumulated in loop
+        long indexCurrent = SSTableConstants.INDEX_KEY_LENGTH;
         for (final Entry e : entries) {
-            indexSize += 4 + e.key().length + 8; // keyLen + key + dataOffset
+            indexCurrent += SSTableConstants.INDEX_KEY_LENGTH + e.key().length + SSTableConstants.OFFSET_LENGTH; // keyLen + key + dataOffset
         }
 
         // Footer: [bloomOffset:8][indexOffset:8][magic:8] = 24 bytes
-        final long totalSize = indexOffset + indexSize + 24;
+        final long totalSize = indexOffset + indexCurrent + SSTableConstants.FOOTER_LENGTH;
 
         // Second pass: fill buffer
         final ByteBuffer buf = ByteBuffer.allocate((int) totalSize);
 
         // Magic
-        buf.putLong(SSTableConstants.MAGIC);
+        buf.putLong(SSTableConstants.MAGIC_VALUE);
 
         // Data section
         for (final Entry e : entries) {
@@ -112,7 +112,7 @@ public final class SSTableWriter {
         // Footer
         buf.putLong(bloomOffset);
         buf.putLong(indexOffset);
-        buf.putLong(SSTableConstants.MAGIC);
+        buf.putLong(SSTableConstants.MAGIC_VALUE);
 
         // Write atomically, then sync
         buf.flip();
@@ -123,6 +123,6 @@ public final class SSTableWriter {
             ch.force(true);
         }
 
-        return SSTableReader.open(path);
+        return SSTable.open(path);
     }
 }
