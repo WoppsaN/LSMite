@@ -4,21 +4,40 @@ import com.petwal.engine.LsmStore;
 import com.petwal.server.LsmServer;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 public class Main {
 
     private static final int DEFAULT_PORT = 7777;
     private static final int THREAD_POOL_SIZE = 10;
     private static final String DEFAULT_DATA_DIR = "lsmite-data";
+    private static final int DEFAULT_MEMTABLE_SIZE = 1024; // 1kb
+
+    private static final String PORT_FLAG = "--port=";
+    private static final String DATA_DIR_FLAG = "--data-dir=";
+    private static final String MEMTABLE_SIZE_FLAG = "--memtable-size=";
 
     public static void main(String[] args) throws Exception {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
-        String dataDir = args.length > 1 ? args[1] : DEFAULT_DATA_DIR;
+        final int port = getPortArgument(args, PORT_FLAG)
+                .map(Integer::valueOf)
+                .orElse(DEFAULT_PORT);
+        final String dataDir = getPortArgument(args, DATA_DIR_FLAG)
+                .orElse(DEFAULT_DATA_DIR);
+        final int memtableSize = getPortArgument(args, MEMTABLE_SIZE_FLAG)
+                .map(Integer::valueOf)
+                .orElse(DEFAULT_MEMTABLE_SIZE);
 
-        LsmStore store = new LsmStore(Path.of(dataDir));
-        LsmServer server = new LsmServer(store, port, THREAD_POOL_SIZE);
+        final LsmStore store = new LsmStore(Path.of(dataDir), memtableSize);
+        final LsmServer server = new LsmServer(store, port, THREAD_POOL_SIZE);
 
-        // Invoked on SIGINT (Ctrl+C) or SIGTERM
+        setSigintHook(server);
+
+        server.start(dataDir, memtableSize);
+        server.awaitTermination(); // block main thread until stop() is called
+    }
+
+    // Invoked on SIGINT (Ctrl+C) or SIGTERM
+    private static void setSigintHook(final LsmServer server) {
         Runtime.getRuntime()
                 .addShutdownHook(new Thread(() -> {
                     System.out.println("[Main] Shutdown signal received.");
@@ -28,8 +47,14 @@ public class Main {
                         e.printStackTrace();
                     }
                 }, "lsm-shutdown"));
+    }
 
-        server.start();
-        server.awaitTermination(); // block main thread until stop() is called
+    private static Optional<String> getPortArgument(String[] args, final String flag) {
+        for (final String arg : args) {
+            if (arg.startsWith(flag)) {
+                return Optional.of(arg.substring(flag.length()));
+            }
+        }
+        return Optional.empty();
     }
 }

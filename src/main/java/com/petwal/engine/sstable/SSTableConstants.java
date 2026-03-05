@@ -39,4 +39,7 @@ public class SSTableConstants {
     /** Value written for tombstone (delete) records. */
     public static final int TOMBSTONE = -1;
 
+    /** Value stored for tombstone (delete) records. (empty bytes) */
+    public static final byte[] TOMBSTONE_BYTES = new byte[0];
+
 }
