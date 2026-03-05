@@ -1,6 +1,7 @@
 package com.petwal.engine.memtable;
 
 import com.petwal.engine.Lookup;
+import com.petwal.engine.sstable.SSTableConstants;
 
 import java.util.Comparator;
 import java.util.TreeMap;
@@ -21,9 +22,6 @@ import java.util.TreeMap;
  */
 public final class MemTable {
 
-    public static final int FLUSH_THRESHOLD = 4 * 1024 * 1024; // 4 MiB
-
-    private static final byte[] TOMBSTONE_BYTES = new byte[0];
     private static final Comparator<byte[]> KEY_ORDER = (a, b) -> {
         final int len = Math.min(a.length, b.length);
         for (int i = 0; i < len; i++) {
@@ -35,47 +33,47 @@ public final class MemTable {
         return a.length - b.length;
     };
 
-    private final TreeMap<byte[], byte[]> map = new TreeMap<>(KEY_ORDER);
-    private int sizeBytes = 0;
+    private final TreeMap<byte[], byte[]> treeMap;
+    private int sizeBytes;
+
+    public MemTable() {
+        this.treeMap = new TreeMap<>(KEY_ORDER);
+        this.sizeBytes = 0;
+    }
 
     public void put(final byte[] key, final byte[] value) {
-        map.put(key, value);
+        treeMap.put(key, value);
         sizeBytes += key.length + value.length;
     }
 
     public void delete(final byte[] key) {
-        map.put(key, TOMBSTONE_BYTES);
+        treeMap.put(key, SSTableConstants.TOMBSTONE_BYTES);
         sizeBytes += key.length;
     }
 
     public Lookup get(final byte[] key) {
-        final byte[] val = map.get(key);
+        final byte[] val = treeMap.get(key);
         if (val == null){
             return Lookup.absent();
         }
-        if (val == TOMBSTONE_BYTES) {
+        if (val == SSTableConstants.TOMBSTONE_BYTES) {
             return Lookup.deleted();
         }
         return Lookup.found(val);
     }
 
-    public boolean shouldFlush() {
-        return sizeBytes >= FLUSH_THRESHOLD;
-    }
-
     public boolean isEmpty() {
-        return map.isEmpty();
+        return treeMap.isEmpty();
     }
 
     /** Sorted entries for flushing. Tombstone sentinel converted to {@code null} value. */
     public Iterable<Entry> sortedEntries() {
-        return () -> map.entrySet().stream()
-                .map(e -> new Entry(e.getKey(), e.getValue() == TOMBSTONE_BYTES ? null : e.getValue()))
+        return () -> treeMap.entrySet().stream()
+                .map(e -> new Entry(e.getKey(), e.getValue() == SSTableConstants.TOMBSTONE_BYTES ? null : e.getValue()))
                 .iterator();
     }
 
-    public void clear() {
-        map.clear();
-        sizeBytes = 0;
+    public int getSizeBytes() {
+        return sizeBytes;
     }
 }

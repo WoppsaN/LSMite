@@ -42,15 +42,18 @@ public final class LsmServer {
         this.threadPoolSize = threadPoolSize;
     }
 
-    public void start() throws IOException {
+    public void start(final String dataDir, final int memtableSize) throws IOException {
         serverSocket = new ServerSocket(port);
         executor = Executors.newFixedThreadPool(threadPoolSize);
         running = true;
 
+        System.out.println("[LsmServer] Listening on port " + port);
+        System.out.println("[LsmServer] Data store in directory " + dataDir);
+        System.out.println("[LsmServer] Memtable size set to " + memtableSize);
+
         acceptThread = new Thread(this::acceptLoop, "lsm-accept");
         acceptThread.setDaemon(false); // keeps JVM alive until stop()
         acceptThread.start();
-        System.out.println("[LsmServer] Listening on port " + port);
     }
 
     private void acceptLoop() {

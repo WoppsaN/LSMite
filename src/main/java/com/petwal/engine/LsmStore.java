@@ -43,12 +43,17 @@ import static java.util.Comparator.comparing;
 public final class LsmStore implements KeyValueStore {
 
     private final Path directory;
-    private MemTable memTable = new MemTable();
-    private final List<SSTable> ssTables = new ArrayList<>(); // index 0 = newest
-    private int currentSSTId = 1;
+    private MemTable memTable;
+    private final List<SSTable> ssTables; // index 0 = newest
+    private int currentSSTId;
+    private final int memtableMaxSize;
 
-    public LsmStore(final Path directory) throws IOException {
+    public LsmStore(final Path directory, final int memtableMaxSize) throws IOException {
         this.directory = directory;
+        this.memTable = new MemTable();
+        this.ssTables = new ArrayList<>();
+        this.currentSSTId = 1;
+        this.memtableMaxSize = memtableMaxSize;
         Files.createDirectories(directory);
         loadExistingSSTables();
     }
@@ -56,7 +61,7 @@ public final class LsmStore implements KeyValueStore {
     @Override
     public synchronized void put(final byte[] key, final byte[] value) throws IOException {
         memTable.put(Arrays.copyOf(key, key.length), value);
-        if (memTable.shouldFlush()) {
+        if (shouldFlush()) {
             flush();
         }
     }
@@ -80,7 +85,7 @@ public final class LsmStore implements KeyValueStore {
     @Override
     public synchronized void delete(final byte[] key) throws IOException {
         memTable.delete(Arrays.copyOf(key, key.length));
-        if (memTable.shouldFlush()){
+        if (shouldFlush()){
             flush();
         }
     }
@@ -102,9 +107,11 @@ public final class LsmStore implements KeyValueStore {
             return;
         }
         final Path sstPath = directory.resolve(String.format("sst-%05d.sst", currentSSTId++));
+        System.out.println("flushing to " + sstPath.getFileName());
         final SSTable reader = SSTableWriter.flush(memTable, sstPath);
         ssTables.addFirst(reader); // prepend: newest first
         memTable = new MemTable();
+        System.out.println("flushing done");
     }
 
     private void loadExistingSSTables() throws IOException {
@@ -128,5 +135,9 @@ public final class LsmStore implements KeyValueStore {
     private static int parseId(Path path) {
         final String name = path.getFileName().toString();
         return Integer.parseInt(name.substring(4, name.length() - 4));
+    }
+
+    private boolean shouldFlush() {
+        return memTable.getSizeBytes() > memtableMaxSize;
     }
 }

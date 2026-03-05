@@ -20,7 +20,7 @@ class LsmStoreTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        store = new LsmStore(dir);
+        store = new LsmStore(dir, 1024);
     }
 
     @AfterEach
@@ -63,7 +63,7 @@ class LsmStoreTest {
         store.put(toBytes("persisted"), toBytes("value"));
         store.flush();
         store.close();
-        try (LsmStore s2 = new LsmStore(dir)) {
+        try (LsmStore s2 = new LsmStore(dir, 1024)) {
             assertArrayEquals(toBytes("value"), s2.get(toBytes("persisted")));
         }
     }
@@ -85,7 +85,7 @@ class LsmStoreTest {
         store.delete(toBytes("k"));
         store.flush();
         store.close();
-        try (LsmStore s2 = new LsmStore(dir)) {
+        try (LsmStore s2 = new LsmStore(dir, 1024)) {
             assertNull(s2.get(toBytes("k")));
         }
     }

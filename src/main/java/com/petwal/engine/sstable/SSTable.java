@@ -49,6 +49,7 @@ public final class SSTable implements Closeable {
 
     private SSTable(final FileChannel fileChannel, final BloomFilter bloom,
                     final byte[][] indexKeys, final long[] indexOffsets) {
+
         this.fileChannel = fileChannel;
         this.bloom = bloom;
         this.indexKeys = indexKeys;
@@ -114,11 +115,9 @@ public final class SSTable implements Closeable {
 
             if (compare < 0) {
                 rangeStart = middleIndex + 1;
-            }
-            else if (compare > 0){
+            } else if (compare > 0) {
                 rangeEnd = middleIndex - 1;
-            }
-            else{
+            } else {
                 return readRecord(indexOffsets[middleIndex]);
             }
         }
