@@ -1,10 +1,12 @@
 plugins {
     id 'java'
     id 'application'
+    id 'com.petwal.docker'
+    id 'com.petwal.spotless-convention'
 }
 
 group = 'com.petwal'
-version = '1.0-SNAPSHOT'
+version = '0.1'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -20,9 +22,10 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.google.guava:guava:33.3.1-jre'
-    testImplementation platform('org.junit:junit-bom:5.10.0')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
+    implementation libs.guava
+
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
 }
 
 jar {
