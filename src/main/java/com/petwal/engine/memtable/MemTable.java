@@ -2,6 +2,7 @@ package com.petwal.engine.memtable;
 
 import com.petwal.engine.Lookup;
 import com.petwal.engine.sstable.SSTableConstants;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.TreeMap;
 
@@ -21,14 +22,11 @@ import java.util.TreeMap;
  */
 public final class MemTable {
 
-  private static final Comparator<byte[]> KEY_ORDER =
+  public static final Comparator<byte[]> BYTE_ARRAY_COMPARATOR =
       (a, b) -> {
-        final int len = Math.min(a.length, b.length);
-        for (int i = 0; i < len; i++) {
-          int diff = Byte.toUnsignedInt(a[i]) - Byte.toUnsignedInt(b[i]);
-          if (diff != 0) {
-            return diff;
-          }
+        final int cmp = Arrays.compareUnsigned(a, b);
+        if (cmp != 0) {
+          return cmp;
         }
         return a.length - b.length;
       };
@@ -37,7 +35,7 @@ public final class MemTable {
   private int sizeBytes;
 
   public MemTable() {
-    this.treeMap = new TreeMap<>(KEY_ORDER);
+    this.treeMap = new TreeMap<>(BYTE_ARRAY_COMPARATOR);
     this.sizeBytes = 0;
   }
 
@@ -66,8 +64,7 @@ public final class MemTable {
     return treeMap.isEmpty();
   }
 
-  /** Sorted entries for flushing. Tombstone sentinel converted to {@code null} value. */
-  public Iterable<Entry> sortedEntries() {
+  public Iterable<Entry> entries() {
     return () ->
         treeMap.entrySet().stream()
             .map(

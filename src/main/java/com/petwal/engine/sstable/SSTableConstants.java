@@ -32,6 +32,8 @@ public class SSTableConstants {
   /** Size in bytes of the fixed record prefix: {@code [keyLen:4][valueLen:4]}. */
   public static final int RECORD_HEADER_SIZE = 8;
 
+  public static final int FOOTER_SIZE = 24;
+
   /** Value written for tombstone (delete) records. */
   public static final int TOMBSTONE = -1;
 
