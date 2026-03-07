@@ -3,12 +3,16 @@ package com.petwal.engine.sstable;
 import static java.nio.file.StandardOpenOption.READ;
 
 import com.petwal.engine.Lookup;
+import com.petwal.engine.memtable.Entry;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * Reads from an immutable SSTable file.
@@ -31,8 +35,6 @@ import java.util.Comparator;
  */
 public final class SSTable implements Closeable {
 
-  private static final int FOOTER_SIZE = 24;
-
   // For comparing SSTable keys
   private static final Comparator<byte[]> BYTE_ARRAY_COMPARATOR =
       (a, b) -> {
@@ -44,33 +46,43 @@ public final class SSTable implements Closeable {
         return a.length - b.length;
       };
 
+  private final Path path;
   private final FileChannel fileChannel;
   private final BloomFilter bloom;
   private final byte[][] indexKeys;
   private final long[] indexOffsets;
+  private final long bloomOffset;
 
   private SSTable(
+      final Path path,
       final FileChannel fileChannel,
       final BloomFilter bloom,
       final byte[][] indexKeys,
-      final long[] indexOffsets) {
+      final long[] indexOffsets,
+      final long bloomOffset) {
 
+    this.path = path;
     this.fileChannel = fileChannel;
     this.bloom = bloom;
     this.indexKeys = indexKeys;
     this.indexOffsets = indexOffsets;
+    this.bloomOffset = bloomOffset;
+  }
+
+  public Path getPath() {
+    return path;
   }
 
   public static SSTable open(final Path path) throws IOException {
     final FileChannel channel = FileChannel.open(path, READ);
     try {
       final long fileSize = channel.size();
-      if (fileSize < FOOTER_SIZE + 8) {
+      if (fileSize < SSTableConstants.FOOTER_SIZE + 8) {
         throw new IOException("File too small to be a valid SSTable: " + path);
       }
 
       // Read and validate footer
-      final byte[] footerBytes = readChannel(channel, fileSize - FOOTER_SIZE, FOOTER_SIZE);
+      final byte[] footerBytes = readChannel(channel, fileSize - SSTableConstants.FOOTER_SIZE, SSTableConstants.FOOTER_SIZE);
       final ByteBuffer footer = ByteBuffer.wrap(footerBytes);
       final long bloomOffset = footer.getLong();
       final long indexOffset = footer.getLong();
@@ -99,7 +111,7 @@ public final class SSTable implements Closeable {
         pos += 8;
       }
 
-      return new SSTable(channel, bloom, indexKeys, indexOffsets);
+      return new SSTable(path, channel, bloom, indexKeys, indexOffsets, bloomOffset);
     } catch (IOException e) {
       channel.close();
       throw e;
@@ -127,6 +139,16 @@ public final class SSTable implements Closeable {
       }
     }
     return Lookup.absent();
+  }
+
+  /**
+   * Returns an {@link Iterable} that streams all entries in sorted key order by scanning the data
+   * section sequentially. Each call produces a fresh iterator starting from the beginning.
+   *
+   * <p>IO errors during iteration are wrapped in {@link UncheckedIOException}.
+   */
+  public Iterable<Entry> entries() {
+    return SSTableIterator::new;
   }
 
   private Lookup readRecord(final long dataOffset) throws IOException {
@@ -166,4 +188,41 @@ public final class SSTable implements Closeable {
   private static boolean isTombstone(int valueLen) {
     return valueLen == SSTableConstants.TOMBSTONE;
   }
+
+  private final class SSTableIterator implements Iterator<Entry> {
+
+    private long pos = SSTableConstants.MAGIC_SIZE; // Data section starts after the magic record
+
+    @Override
+    public boolean hasNext() {
+      return pos < bloomOffset; // Where bloom section starts, data section ends
+    }
+
+    @Override
+    public Entry next() {
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
+
+      try {
+        final int keyLen = ByteBuffer.wrap(readChannel(fileChannel, pos, 4)).getInt();
+        pos += 4;
+        final int valueLen = ByteBuffer.wrap(readChannel(fileChannel, pos, 4)).getInt();
+        pos += 4;
+        final byte[] key = readChannel(fileChannel, pos, keyLen);
+        pos += keyLen;
+        final byte[] value;
+        if (valueLen == SSTableConstants.TOMBSTONE) {
+          value = SSTableConstants.TOMBSTONE_BYTES;
+        } else {
+          value = readChannel(fileChannel, pos, valueLen);
+          pos += valueLen;
+        }
+        return new Entry(key, value);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
+  }
+
 }

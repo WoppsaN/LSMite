@@ -47,7 +47,7 @@ public final class LsmStore implements KeyValueStore {
 
   private final Path directory;
   private MemTable memTable;
-  private final List<SSTable> ssTables; // index 0 = newest
+  private List<SSTable> ssTables; // index 0 = newest
   private int currentSSTId;
   private final int memtableMaxSize;
 
@@ -66,6 +66,9 @@ public final class LsmStore implements KeyValueStore {
     memTable.put(Arrays.copyOf(key, key.length), value);
     if (shouldFlush()) {
       flush();
+    }
+    if (shouldMerge()) {
+      merge();
     }
   }
 
@@ -91,6 +94,9 @@ public final class LsmStore implements KeyValueStore {
     if (shouldFlush()) {
       flush();
     }
+    if (shouldMerge()) {
+      merge();
+    }
   }
 
   @Override
@@ -110,11 +116,14 @@ public final class LsmStore implements KeyValueStore {
       return;
     }
     final Path sstPath = directory.resolve(String.format("sst-%05d.sst", currentSSTId++));
-    System.out.println("flushing to " + sstPath.getFileName());
     final SSTable reader = SSTableWriter.flush(memTable, sstPath);
     ssTables.addFirst(reader); // prepend: newest first
     memTable = new MemTable();
-    System.out.println("flushing done");
+  }
+
+  private synchronized void merge() throws IOException {
+    final String fileName = String.format("sst-%05d.sst", currentSSTId++);
+    ssTables = List.of(SSTableWriter.merge(ssTables, directory.resolve(fileName)));
   }
 
   private void loadExistingSSTables() throws IOException {
@@ -142,5 +151,9 @@ public final class LsmStore implements KeyValueStore {
 
   private boolean shouldFlush() {
     return memTable.getSizeBytes() > memtableMaxSize;
+  }
+
+  private boolean shouldMerge() {
+    return ssTables.size() >= 3;
   }
 }

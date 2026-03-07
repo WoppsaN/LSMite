@@ -7,9 +7,9 @@ import com.petwal.engine.memtable.MemTable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * Flushes a {@link MemTable} to an immutable, sorted SSTable file.
@@ -46,9 +46,14 @@ public final class SSTableWriter {
   public static SSTable flush(final MemTable memTable, final Path path) throws IOException {
     // Collect entries (already sorted by MemTable's TreeMap)
     final List<Entry> entries = new ArrayList<>();
-    for (final Entry e : memTable.sortedEntries()) {
+    for (final Entry e : memTable.entries()) {
       entries.add(e);
     }
+
+    return flush(path, entries);
+  }
+
+  private static SSTable flush(Path path, List<Entry> entries) throws IOException {
 
     // Build Bloom filter
     final BloomFilter bloomFilter = new BloomFilter(entries.size());
@@ -128,5 +133,65 @@ public final class SSTableWriter {
     }
 
     return SSTable.open(path);
+  }
+
+  public static SSTable merge(final List<SSTable> ssTables, final Path newPath) throws IOException {
+    final PriorityQueue<QueueEntry> priorityQueue = new PriorityQueue<>();
+    int generation = 0;
+    for (final SSTable table : ssTables.reversed()) {
+      final Iterator<Entry> iterator = table.entries().iterator();
+      if (iterator.hasNext()) {
+        final QueueEntry entry = new QueueEntry(iterator.next(), generation++, iterator);
+        priorityQueue.add(entry);
+      }
+    }
+
+    final List<Entry> entries = new ArrayList<>();
+    byte[] lastKey = {};
+    while (!priorityQueue.isEmpty()) {
+      final QueueEntry queueEntry = priorityQueue.poll();
+      byte[] key = queueEntry.entry.key();
+      byte[] value = queueEntry.entry.value();
+
+      if (!isEqualBytes(lastKey, queueEntry.entry().key()) && !isTombstoneBytes(value)) {
+        entries.add(new Entry(queueEntry.entry().key(), queueEntry.entry.value()));
+      }
+
+      if (queueEntry.tableIterator.hasNext()) {
+        final Entry entry = queueEntry.tableIterator.next();
+        priorityQueue.add(
+            new QueueEntry(entry, queueEntry.generation(), queueEntry.tableIterator()));
+      }
+      lastKey = key;
+    }
+
+    for (final SSTable table : ssTables) {
+      table.close();
+      Files.delete(table.getPath());
+    }
+
+    return flush(newPath, entries);
+  }
+
+  private static boolean isTombstoneBytes(byte[] key) {
+    return Arrays.equals(SSTableConstants.TOMBSTONE_BYTES, key);
+  }
+
+  private static boolean isEqualBytes(byte[] lastKey, byte[] key) {
+    return Arrays.equals(lastKey, key);
+  }
+
+  private record QueueEntry(Entry entry, int generation, Iterator<Entry> tableIterator)
+      implements Comparable<QueueEntry> {
+
+    @Override
+    public int compareTo(QueueEntry queueEntry) {
+      final int cmp = Arrays.compareUnsigned(entry.key(), queueEntry.entry.key());
+      if (cmp != 0) {
+        return cmp;
+      }
+
+      return queueEntry.generation() - generation();
+    }
   }
 }
