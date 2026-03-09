@@ -12,37 +12,25 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Flushes a {@link MemTable} to an immutable, sorted SSTable file.
+ * Static utility for writing MemTable contents and merging existing SSTables to disk.
  *
- * <h3>File format</h3>
+ * <h3>Two-pass write</h3>
  *
- * <pre>
- * [magic:8]       "SSTABLE\0" = 0x5353_5441_424C_4500L
- * [Data section]  sorted records: [keyLen:4][valueLen:4 or -1][key][value]
- * [Bloom section] [numBits:4][k:1][bitArray: ceil(numBits/8) bytes]
- * [Index section] [numEntries:4] then per-entry: [keyLen:4][key][dataOffset:8]
- * [Footer:24]     [bloomOffset:8][indexOffset:8][magic:8]
- * </pre>
+ * <p>The flush path makes a first pass to compute all section offsets and sizes, then assembles a
+ * single {@link java.nio.ByteBuffer} and writes it atomically with {@code CREATE_NEW} +
+ * {@code FileChannel.force(true)}. This prevents partially-written files from becoming visible.
  *
- * <h3>Design decisions</h3>
+ * <h3>Merge (compaction)</h3>
  *
- * <ul>
- *   <li><b>Two-pass single-buffer write</b>: first pass collects entries and computes all offsets;
- *       second pass fills one {@link ByteBuffer} written atomically. Bounded by the MemTable
- *       threshold (4 MiB), so {@code int} capacity is safe.
- *   <li><b>{@code CREATE_NEW} + {@code force(true)}</b>: guarantees immutability (no accidental
- *       overwrites) and durability.
- *   <li><b>Dense index</b>: one entry per key. Valid since the MemTable is bounded.
- * </ul>
+ * <p>The merge path performs a k-way merge over all existing SSTables using a {@link
+ * java.util.PriorityQueue}, deduplicates by key (newest generation wins), drops tombstones, and
+ * flushes the resulting entry list as a single new SSTable. The old files are deleted before
+ * returning.
  */
 public final class SSTableWriter {
 
   private SSTableWriter() {}
 
-  /**
-   * Writes all entries from {@code memTable} to {@code path} in sorted order and returns an {@link
-   * SSTable} open on the newly created file.
-   */
   public static SSTable flush(final MemTable memTable, final Path path) throws IOException {
     // Collect entries (already sorted by MemTable's TreeMap)
     final List<Entry> entries = new ArrayList<>();
@@ -79,16 +67,13 @@ public final class SSTableWriter {
 
     // Index section
     final long indexOffset = bloomOffset + bloomBytes.length;
-    long indexCurrent = SSTableConstants.INDEX_KEY_LENGTH;
+    long indexCurrent = SSTableConstants.LENGTH_SIZE; // numEntries header
     for (final Entry e : entries) {
-      indexCurrent +=
-          SSTableConstants.INDEX_KEY_LENGTH
-              + e.key().length
-              + SSTableConstants.OFFSET_LENGTH; // keyLen + key + dataOffset
+      indexCurrent += SSTableConstants.LENGTH_SIZE + e.key().length + SSTableConstants.OFFSET_SIZE; // keyLen + key + dataOffset
     }
 
     // Footer: [bloomOffset:8][indexOffset:8][magic:8] = 24 bytes
-    final long totalSize = indexOffset + indexCurrent + SSTableConstants.FOOTER_LENGTH;
+    final long totalSize = indexOffset + indexCurrent + SSTableConstants.FOOTER_SIZE;
 
     // Second pass: fill buffer
     final ByteBuffer buf = ByteBuffer.allocate((int) totalSize);

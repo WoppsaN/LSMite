@@ -12,9 +12,11 @@ import java.net.Socket;
 import java.net.SocketException;
 
 /**
- * Handles one client connection, parsing and dispatching line-based commands.
+ * Per-connection handler that parses line-oriented text commands and dispatches them to the store.
  *
- * <p>{@link LsmStore} is {@code synchronized(this)} internally — no extra locking needed here.
+ * <p>Supported commands: {@code PUT <key> <value>}, {@code GET <key>}, {@code DELETE <key>}.
+ * Each command and response is terminated by a newline. Values may contain spaces; the line is
+ * split into at most three tokens so that everything after the key is treated as the value.
  */
 final class ClientHandler implements Runnable {
 

@@ -5,12 +5,20 @@ import com.petwal.server.LsmServer;
 import java.nio.file.Path;
 import java.util.Optional;
 
+/**
+ * Application entry point for the LSMite TCP server.
+ *
+ * <p>Parses optional command-line flags ({@code --port}, {@code --data-dir},
+ * {@code --memtable-size}), constructs an {@link com.petwal.engine.LsmStore}, starts an
+ * {@link com.petwal.server.LsmServer}, and registers a JVM shutdown hook that flushes and closes
+ * the store on SIGINT / SIGTERM.
+ */
 public class Main {
 
   private static final int DEFAULT_PORT = 7777;
   private static final int THREAD_POOL_SIZE = 10;
   private static final String DEFAULT_DATA_DIR = "lsmite-data";
-  private static final int DEFAULT_MEMTABLE_SIZE = 1024; // 1kb
+  private static final int DEFAULT_MEMTABLE_SIZE = 20; // 1kb
 
   private static final String PORT_FLAG = "--port=";
   private static final String DATA_DIR_FLAG = "--data-dir=";

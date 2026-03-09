@@ -4,10 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 
 /**
- * Stable public API surface for key-value storage.
+ * Public interface for the key-value storage engine.
  *
- * <p>Implementations vary in durability, ordering, and concurrency guarantees. Thread-safety is not
- * specified at this level; each implementation documents its own guarantees.
+ * <p>All keys and values are raw byte arrays. A {@code null} return from {@link #get} means the
+ * key does not exist (or has been deleted). Implementations must be {@link java.io.Closeable} to
+ * allow proper resource cleanup.
  */
 public interface KeyValueStore extends Closeable {
 
@@ -16,4 +17,5 @@ public interface KeyValueStore extends Closeable {
   byte[] get(byte[] key) throws IOException;
 
   void delete(byte[] key) throws IOException;
+
 }

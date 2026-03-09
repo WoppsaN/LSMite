@@ -10,21 +10,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * TCP server exposing {@link LsmStore} over a line-based text protocol.
+ * TCP server that exposes an {@link com.petwal.engine.LsmStore} over a simple text protocol.
  *
- * <h3>Protocol</h3>
- *
- * <pre>
- *   PUT  &lt;key&gt; &lt;value&gt;\n  →  OK\n
- *   GET  &lt;key&gt;\n          →  &lt;value&gt;\n  or  NOT_FOUND\n
- *   DELETE &lt;key&gt;\n        →  OK\n
- *   (any error)           →  ERROR &lt;message&gt;\n
- * </pre>
- *
- * <h3>Shutdown sequence</h3>
- *
- * {@link #stop()} signals the accept loop, closes the server socket, drains in-flight handlers,
- * flushes the MemTable, then closes the store.
+ * <p>Accepts connections on a configurable port and dispatches each connection to a fixed-size
+ * thread pool as a {@link ClientHandler}. On shutdown, the accept loop is stopped, in-flight
+ * handlers are drained, and the store is flushed and closed.
  */
 public final class LsmServer {
 

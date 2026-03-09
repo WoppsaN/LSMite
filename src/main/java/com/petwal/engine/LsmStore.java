@@ -15,33 +15,30 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
+ * LSM-tree inspired key-value storage engine.
  *
+ * <h3>Write path</h3>
  *
- * <h3>LSM-tree key-value store.</h3>
- *
- * <ul>
- *   <li><b>No WAL</b>: unflushed MemTable data is lost on crash. SSTables are crash-safe ({@code
- *       CREATE_NEW} + {@code force(true)}).
- *   <li><b>MemTable</b>: bounded 4 MiB in-memory write buffer; auto-flushed on overflow.
- *   <li><b>SSTable list</b>: {@code ssTables.get(0)} = newest; prepended on each flush.
- *   <li><b>SSTable naming</b>: {@code sst-00001.sst} — zero-padded so lexicographic order equals
- *       creation order.
- *   <li><b>nextSSTId</b>: {@code max(parsed ids) + 1} on startup — handles gaps correctly.
- *   <li><b>{@code synchronized(this)}</b>: all public methods; protects MemTable + SSTable list
- *       atomicity.
- * </ul>
+ * <p>Writes go to the in-memory {@link com.petwal.engine.memtable.MemTable}. When the MemTable
+ * exceeds {@code memtableMaxSize} bytes it is flushed to a new SSTable on disk. When three or more
+ * SSTables accumulate they are merged into a single SSTable (compaction).
  *
  * <h3>Read path</h3>
  *
- * <pre>
- * get(key):
- *   r = memTable.get(key)
- *   if !r.isAbsent() → return r.isTombstone() ? null : r.value()
- *   for sst in ssTables:          // newest first
- *     r = sst.get(key)
- *     if !r.isAbsent() → return r.isTombstone() ? null : r.value()
- *   return null
- * </pre>
+ * <p>The MemTable is checked first, then each SSTable in newest-first order. The search stops at
+ * the first non-{@link Lookup#absent()} result so that a tombstone in a newer layer correctly
+ * shadows an older value.
+ *
+ * <h3>Thread safety</h3>
+ *
+ * <p>All public methods are {@code synchronized} on {@code this}. {@link
+ * com.petwal.engine.sstable.SSTable} instances are NOT independently thread-safe and rely on this
+ * coarse lock for serialisation.
+ *
+ * <h3>Crash safety</h3>
+ *
+ * <p>There is no WAL. Writes buffered in the MemTable are lost on a crash. Flushed SSTables are
+ * crash-safe because they are written with {@code CREATE_NEW} and {@code FileChannel.force(true)}.
  */
 public final class LsmStore implements KeyValueStore {
 
@@ -106,11 +103,6 @@ public final class LsmStore implements KeyValueStore {
     }
   }
 
-  /**
-   * Flushes the current MemTable to a new SSTable file. Public so {@link
-   * com.petwal.server.LsmServer} can flush on shutdown. Tests in {@code com.petwal.engine} also
-   * call this directly.
-   */
   public synchronized void flush() throws IOException {
     if (memTable.isEmpty()) {
       return;
