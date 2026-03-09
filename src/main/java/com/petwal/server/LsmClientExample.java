@@ -6,11 +6,10 @@ import java.io.*;
 import java.net.Socket;
 
 /**
- * Self-contained demo client that connects to a running {@link LsmServer} and exercises the
- * line-based protocol.
+ * Example TCP client that demonstrates the LSMite text protocol.
  *
- * <p>Usage: {@code java LsmClientExample [host] [port]} <br>
- * Defaults: host = localhost, port = 7777
+ * <p>Connects to {@code localhost:7777} and executes a series of {@code PUT}, {@code GET}, and
+ * {@code DELETE} commands, printing the server response for each.
  */
 public final class LsmClientExample {
 

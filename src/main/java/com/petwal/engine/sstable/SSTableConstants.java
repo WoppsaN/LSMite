@@ -1,42 +1,57 @@
 package com.petwal.engine.sstable;
 
-public class SSTableConstants {
+/**
+ * Compile-time constants that define the SSTable binary file format.
+ *
+ * <h3>File layout (in order)</h3>
+ *
+ * <pre>
+ * [magic:8]        — identifies the file as a valid SSTable
+ * [data section]   — sorted records: [keyLen:4][valueLen:4][key][value]
+ * [bloom section]  — serialised Bloom filter
+ * [index section]  — [numEntries:4] followed by per-key: [keyLen:4][key][dataOffset:8]
+ * [footer:24]      — [bloomOffset:8][indexOffset:8][magic:8]
+ * </pre>
+ *
+ * <h3>Tombstone encoding</h3>
+ *
+ * <p>On disk, a deleted key is encoded with {@code valueLen == TOMBSTONE} (-1) and no value bytes.
+ * In the MemTable, the in-memory sentinel is {@code TOMBSTONE_BYTES} (an empty byte array), which
+ * is converted to a {@code null} value when producing {@link com.petwal.engine.memtable.Entry}
+ * objects for the flush path.
+ */
+public final class SSTableConstants {
 
-  /**
-   * Magic number used to validate SSTable files. Format in file: {@code [magic:8]} (8 bytes)
-   * Typically "SSTABLE\0" in ASCII.
-   */
+  private SSTableConstants() {}
+
+  /** Magic number written at the start and end of every SSTable file ({@code "SSTABLE\0"}). */
   public static final long MAGIC_VALUE = 0x5353_5441_424C_4500L;
 
-  /** Size of the magic number in bytes. Matches {@code [magic:8]} in the file footer. */
+  /** Byte size of the magic number field (one {@code long}). */
   public static final long MAGIC_SIZE = 8L;
 
   /**
-   * Number of bytes used to store a key length in the index. Format in file: {@code [keyLen:4]} (4
-   * bytes)
+   * Byte size of every 4-byte length field in the format: {@code keyLen}, {@code valueLen}, and
+   * {@code numEntries}.
    */
-  public static final long INDEX_KEY_LENGTH = 4L;
+  public static final int LENGTH_SIZE = Integer.BYTES;
 
-  /**
-   * Number of bytes used to store a data offset in the index. Format in file: {@code
-   * [dataOffset:8]} (8 bytes)
-   */
-  public static final long OFFSET_LENGTH = 8L;
+  /** Byte size of every 8-byte offset field in the format: {@code dataOffset}, {@code bloomOffset}, and {@code indexOffset}. */
+  public static final int OFFSET_SIZE = Long.BYTES;
 
-  /**
-   * Total size of the SSTable footer in bytes. Format in file: {@code
-   * [bloomOffset:8][indexOffset:8][magic:8]} (24 bytes)
-   */
-  public static final long FOOTER_LENGTH = 24L;
-
-  /** Size in bytes of the fixed record prefix: {@code [keyLen:4][valueLen:4]}. */
+  /** Byte size of the record header: {@code keyLen:4 + valueLen:4}. */
   public static final int RECORD_HEADER_SIZE = 8;
 
+  /** Byte size of the footer section: {@code bloomOffset:8 + indexOffset:8 + magic:8}. */
   public static final int FOOTER_SIZE = 24;
 
-  /** Value written for tombstone (delete) records. */
+  /** On-disk sentinel value for {@code valueLen} that marks a deleted key. */
   public static final int TOMBSTONE = -1;
 
-  /** Value stored for tombstone (delete) records. (empty bytes) */
+  /**
+   * In-memory sentinel stored in the MemTable's {@code TreeMap} for deleted keys. Using an empty
+   * byte array (rather than {@code null}) keeps the map from losing the tombstone entry.
+   */
   public static final byte[] TOMBSTONE_BYTES = new byte[0];
+
 }

@@ -2,6 +2,7 @@ package com.petwal.engine.sstable;
 
 import static java.nio.file.StandardOpenOption.READ;
 
+import com.petwal.comparator.ByteArrayComparators;
 import com.petwal.engine.Lookup;
 import com.petwal.engine.memtable.Entry;
 import java.io.Closeable;
@@ -10,47 +11,36 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
- * Reads from an immutable SSTable file.
+ * An immutable, on-disk sorted segment that stores key-value records flushed from a MemTable.
  *
- * <h3>Open sequence</h3>
+ * <h3>File format</h3>
  *
- * Reads the fixed-size footer → verifies magic → loads the Bloom filter → loads the full index into
- * heap arrays ({@code byte[][] indexKeys}, {@code long[] indexOffsets}).
+ * <p>The layout is: {@code [magic:8][data section][bloom section][index section][footer:24]}. See
+ * {@link SSTableConstants} for field-level encoding details.
  *
- * <h3>get(key) sequence</h3>
+ * <h3>Read path</h3>
  *
- * Bloom check → binary search on {@code indexKeys} → positional file read (reads header to learn
- * keyLen/valueLen, then reads value bytes).
+ * <p>Lookups first check the Bloom filter to skip SSTables that definitely do not contain the key,
+ * then perform a binary search over the in-memory index to find the record's data offset, and
+ * finally seek the {@link java.nio.channels.FileChannel} to that offset to read the record.
  *
- * <h3>Thread-safety</h3>
+ * <h3>Thread safety</h3>
  *
- * Uses stateful {@code ch.position()} + {@code ch.read()}: safe only under {@link
- * com.petwal.engine.LsmStore}'s {@code synchronized(this)} guard. A concurrent caller would need
- * {@code ch.read(buf, offset)} instead.
+ * <p>{@code SSTable} is NOT independently thread-safe. The underlying {@link
+ * java.nio.channels.FileChannel} is stateful (position-based reads). Callers must ensure exclusive
+ * access, typically via the {@code synchronized} lock on {@link com.petwal.engine.LsmStore}.
  */
 public final class SSTable implements Closeable {
-
-  // For comparing SSTable keys
-  private static final Comparator<byte[]> BYTE_ARRAY_COMPARATOR =
-      (a, b) -> {
-        final int len = Math.min(a.length, b.length);
-        for (int i = 0; i < len; i++) {
-          final int diff = Byte.toUnsignedInt(a[i]) - Byte.toUnsignedInt(b[i]);
-          if (diff != 0) return diff;
-        }
-        return a.length - b.length;
-      };
 
   private final Path path;
   private final FileChannel fileChannel;
   private final BloomFilter bloom;
-  private final byte[][] indexKeys;
-  private final long[] indexOffsets;
+  private final byte[][] indexKeys; // i -> key
+  private final long[] indexOffsets; // i -> file offset
   private final long bloomOffset;
 
   private SSTable(
@@ -77,12 +67,14 @@ public final class SSTable implements Closeable {
     final FileChannel channel = FileChannel.open(path, READ);
     try {
       final long fileSize = channel.size();
-      if (fileSize < SSTableConstants.FOOTER_SIZE + 8) {
+      if (fileSize < SSTableConstants.FOOTER_SIZE + SSTableConstants.MAGIC_SIZE) {
         throw new IOException("File too small to be a valid SSTable: " + path);
       }
 
       // Read and validate footer
-      final byte[] footerBytes = readChannel(channel, fileSize - SSTableConstants.FOOTER_SIZE, SSTableConstants.FOOTER_SIZE);
+      final byte[] footerBytes =
+          readChannel(
+              channel, fileSize - SSTableConstants.FOOTER_SIZE, SSTableConstants.FOOTER_SIZE);
       final ByteBuffer footer = ByteBuffer.wrap(footerBytes);
       final long bloomOffset = footer.getLong();
       final long indexOffset = footer.getLong();
@@ -97,18 +89,21 @@ public final class SSTable implements Closeable {
       final BloomFilter bloom = BloomFilter.deserialize(bloomBytes);
 
       // Load index
-      final byte[] indexHeader = readChannel(channel, indexOffset, 4);
+      final byte[] indexHeader =
+          readChannel(channel, indexOffset, SSTableConstants.LENGTH_SIZE);
       final int numEntries = ByteBuffer.wrap(indexHeader).getInt();
       final byte[][] indexKeys = new byte[numEntries][];
       final long[] indexOffsets = new long[numEntries];
-      long pos = indexOffset + 4; // skip header
+      long pos = indexOffset + SSTableConstants.LENGTH_SIZE; // skip numEntries header
       for (int i = 0; i < numEntries; i++) {
-        final int keyLen = ByteBuffer.wrap(readChannel(channel, pos, 4)).getInt();
-        pos += 4;
+        final int keyLen =
+            ByteBuffer.wrap(readChannel(channel, pos, SSTableConstants.LENGTH_SIZE)).getInt();
+        pos += SSTableConstants.LENGTH_SIZE;
         indexKeys[i] = readChannel(channel, pos, keyLen);
         pos += keyLen;
-        indexOffsets[i] = ByteBuffer.wrap(readChannel(channel, pos, 8)).getLong();
-        pos += 8;
+        indexOffsets[i] =
+            ByteBuffer.wrap(readChannel(channel, pos, SSTableConstants.OFFSET_SIZE)).getLong();
+        pos += SSTableConstants.OFFSET_SIZE;
       }
 
       return new SSTable(path, channel, bloom, indexKeys, indexOffsets, bloomOffset);
@@ -122,13 +117,12 @@ public final class SSTable implements Closeable {
     if (!bloom.mightContain(key)) {
       return Lookup.absent();
     }
-
     // Binary search over sorted index keys
     int rangeStart = 0;
     int rangeEnd = indexKeys.length - 1;
     while (rangeStart <= rangeEnd) {
       final int middleIndex = (rangeStart + rangeEnd) / 2;
-      final int compare = BYTE_ARRAY_COMPARATOR.compare(indexKeys[middleIndex], key);
+      final int compare = ByteArrayComparators.LEXICOGRAPHIC.compare(indexKeys[middleIndex], key);
 
       if (compare < 0) {
         rangeStart = middleIndex + 1;
@@ -141,12 +135,6 @@ public final class SSTable implements Closeable {
     return Lookup.absent();
   }
 
-  /**
-   * Returns an {@link Iterable} that streams all entries in sorted key order by scanning the data
-   * section sequentially. Each call produces a fresh iterator starting from the beginning.
-   *
-   * <p>IO errors during iteration are wrapped in {@link UncheckedIOException}.
-   */
   public Iterable<Entry> entries() {
     return SSTableIterator::new;
   }
@@ -205,10 +193,14 @@ public final class SSTable implements Closeable {
       }
 
       try {
-        final int keyLen = ByteBuffer.wrap(readChannel(fileChannel, pos, 4)).getInt();
-        pos += 4;
-        final int valueLen = ByteBuffer.wrap(readChannel(fileChannel, pos, 4)).getInt();
-        pos += 4;
+        final int keyLen =
+            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE))
+                .getInt();
+        pos += SSTableConstants.LENGTH_SIZE;
+        final int valueLen =
+            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE))
+                .getInt();
+        pos += SSTableConstants.LENGTH_SIZE;
         final byte[] key = readChannel(fileChannel, pos, keyLen);
         pos += keyLen;
         final byte[] value;
@@ -224,5 +216,4 @@ public final class SSTable implements Closeable {
       }
     }
   }
-
 }

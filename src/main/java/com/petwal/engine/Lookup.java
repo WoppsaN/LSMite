@@ -1,11 +1,14 @@
 package com.petwal.engine;
 
 /**
- * Three-value lookup result distinguishing absent from deleted.
+ * Three-valued result type for key lookups across the layered MemTable + SSTable read path.
  *
- * <p>A tombstone in a newer layer must stop the search before an older layer returns a stale value.
- * Without a dedicated DELETED state, a MemTable delete followed by a matching SSTable entry would
- * incorrectly surface the old value.
+ * <ul>
+ *   <li>{@code ABSENT} — the key was not found in this layer; continue to the next layer.
+ *   <li>{@code DELETED} — a tombstone was found; stop searching and return {@code null} to the
+ *       caller.
+ *   <li>{@code FOUND} — the key exists with a concrete value; stop searching and return the value.
+ * </ul>
  */
 public final class Lookup {
 
