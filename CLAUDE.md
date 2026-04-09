@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # LSMite — Claude Context File
 
 ## Project
@@ -34,14 +38,15 @@ first non-absent `Lookup` result).
 com.petwal
 ├── Main.java                              — TCP server entry-point
 ├── api/KeyValueStore.java                 — public interface (put, get, delete, close)
-├── engine/LogFormat.java                  — HEADER_SIZE=8, TOMBSTONE=-1; public static helpers
+├── comparator/ByteArrayComparators.java   — LEXICOGRAPHIC Comparator<byte[]> (unsigned bytes)
 ├── engine/Lookup.java                     — three-value result: ABSENT / DELETED / FOUND
 ├── engine/LsmStore.java                   — core store; flush() is public
 ├── engine/memtable/MemTable.java          — TreeMap-backed buffer; FLUSH_THRESHOLD=4MiB
 ├── engine/memtable/Entry.java             — record(key, value); isTombstone()=value==null
 ├── engine/sstable/BloomFilter.java        — pkg-private; ~1% FPR, Murmur3-128 double-hashing
-├── engine/sstable/SSTableWriter.java      — static flush(MemTable, Path) → SSTableReader
-├── engine/sstable/SSTableReader.java      — open(Path), get(key) with dense index + bloom guard
+├── engine/sstable/SSTableConstants.java   — binary format constants (magic, sizes, TOMBSTONE=-1)
+├── engine/sstable/SSTableWriter.java      — static flush(MemTable, Path) → SSTable
+├── engine/sstable/SSTable.java            — open(Path), get(key), entries(); implements Closeable
 ├── server/LsmServer.java                  — TCP server; binds on port 7777, accepts client connections
 ├── server/ClientHandler.java              — per-connection handler; parses text protocol commands
 └── server/LsmClientExample.java          — example client demonstrating the TCP protocol
@@ -84,9 +89,10 @@ Offset (relative)   Field
    `FileChannel.force(true)` are crash-safe (data + metadata flushed before the file is visible
    in the index).
 
-2. **Tombstone sentinel** — `Entry.isTombstone()` is `value == null`. The `MemTable` TreeMap
-   stores `null` values for deleted keys so a subsequent `get` finds the tombstone in the
-   in-memory layer before descending to SSTables.
+2. **Tombstone sentinel** — The `MemTable` TreeMap stores `SSTableConstants.TOMBSTONE_BYTES`
+   (an empty `byte[]`, identity-compared with `==`) for deleted keys so that a subsequent `get`
+   finds the tombstone before descending to SSTables. The sentinel is converted to `null` when
+   producing `Entry` objects for the flush path; `Entry.isTombstone()` is therefore `value == null`.
 
 3. **`Lookup` three-value type** — `ABSENT` / `DELETED` / `FOUND`. The layered read stops at
    the first non-`ABSENT` result, correctly handling deletes that shadow older SSTables.
@@ -191,6 +197,7 @@ Offset (relative)   Field
 ```bash
 ./gradlew compileJava
 ./gradlew cleanTest test
+./gradlew test --tests "com.petwal.engine.LsmStoreTest.testName"
 ./gradlew run
 ```
 

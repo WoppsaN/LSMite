@@ -89,8 +89,7 @@ public final class SSTable implements Closeable {
       final BloomFilter bloom = BloomFilter.deserialize(bloomBytes);
 
       // Load index
-      final byte[] indexHeader =
-          readChannel(channel, indexOffset, SSTableConstants.LENGTH_SIZE);
+      final byte[] indexHeader = readChannel(channel, indexOffset, SSTableConstants.LENGTH_SIZE);
       final int numEntries = ByteBuffer.wrap(indexHeader).getInt();
       final byte[][] indexKeys = new byte[numEntries][];
       final long[] indexOffsets = new long[numEntries];
@@ -194,12 +193,10 @@ public final class SSTable implements Closeable {
 
       try {
         final int keyLen =
-            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE))
-                .getInt();
+            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE)).getInt();
         pos += SSTableConstants.LENGTH_SIZE;
         final int valueLen =
-            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE))
-                .getInt();
+            ByteBuffer.wrap(readChannel(fileChannel, pos, SSTableConstants.LENGTH_SIZE)).getInt();
         pos += SSTableConstants.LENGTH_SIZE;
         final byte[] key = readChannel(fileChannel, pos, keyLen);
         pos += keyLen;

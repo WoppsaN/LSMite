@@ -17,8 +17,8 @@ import java.util.*;
  * <h3>Two-pass write</h3>
  *
  * <p>The flush path makes a first pass to compute all section offsets and sizes, then assembles a
- * single {@link java.nio.ByteBuffer} and writes it atomically with {@code CREATE_NEW} +
- * {@code FileChannel.force(true)}. This prevents partially-written files from becoming visible.
+ * single {@link java.nio.ByteBuffer} and writes it atomically with {@code CREATE_NEW} + {@code
+ * FileChannel.force(true)}. This prevents partially-written files from becoming visible.
  *
  * <h3>Merge (compaction)</h3>
  *
@@ -69,7 +69,10 @@ public final class SSTableWriter {
     final long indexOffset = bloomOffset + bloomBytes.length;
     long indexCurrent = SSTableConstants.LENGTH_SIZE; // numEntries header
     for (final Entry e : entries) {
-      indexCurrent += SSTableConstants.LENGTH_SIZE + e.key().length + SSTableConstants.OFFSET_SIZE; // keyLen + key + dataOffset
+      indexCurrent +=
+          SSTableConstants.LENGTH_SIZE
+              + e.key().length
+              + SSTableConstants.OFFSET_SIZE; // keyLen + key + dataOffset
     }
 
     // Footer: [bloomOffset:8][indexOffset:8][magic:8] = 24 bytes

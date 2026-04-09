@@ -10,8 +10,7 @@ import java.util.Comparator;
  */
 public final class ByteArrayComparators {
 
-  private ByteArrayComparators() {
-  }
+  private ByteArrayComparators() {}
 
   public static final Comparator<byte[]> LEXICOGRAPHIC =
       (a, b) -> {
@@ -22,5 +21,4 @@ public final class ByteArrayComparators {
         }
         return a.length - b.length;
       };
-
 }

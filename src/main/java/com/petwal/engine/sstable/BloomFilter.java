@@ -9,16 +9,14 @@ import java.nio.ByteOrder;
  *
  * <h3>Parameters</h3>
  *
- * <p>Given the expected number of insertions {@code n}, the number of bits {@code m} and the
- * number of hash functions {@code k} are chosen to target approximately 1% false-positive rate
- * using the standard formulae: {@code m = ceil(-n * ln(0.01) / (ln2)^2)} and
- * {@code k = round(m/n * ln2)}.
+ * <p>Given the expected number of insertions {@code n}, the number of bits {@code m} and the number
+ * of hash functions {@code k} are chosen to target approximately 1% false-positive rate using the
+ * standard formulae: {@code m = ceil(-n * ln(0.01) / (ln2)^2)} and {@code k = round(m/n * ln2)}.
  *
  * <h3>Hashing</h3>
  *
- * <p>Murmur3-128 double-hashing is used: {@code bit_i = (hash1 + i * hash2) % numBits}. This
- * avoids the cost of computing {@code k} independent hash functions while maintaining good
- * uniformity.
+ * <p>Murmur3-128 double-hashing is used: {@code bit_i = (hash1 + i * hash2) % numBits}. This avoids
+ * the cost of computing {@code k} independent hash functions while maintaining good uniformity.
  *
  * <h3>Serialisation</h3>
  *
@@ -64,7 +62,7 @@ final class BloomFilter {
     final long hash2 = buf.getLong();
     for (int i = 0; i < k; i++) {
       final int bit = (int) (((hash1 + (long) i * hash2) & Long.MAX_VALUE) % numBits);
-      if ((bits[bit / 8] & (1 << (bit % 8))) == 0){
+      if ((bits[bit / 8] & (1 << (bit % 8))) == 0) {
         return false;
       }
     }
@@ -72,11 +70,8 @@ final class BloomFilter {
   }
 
   private static ByteBuffer murmur128(final byte[] key) {
-    final byte[] b = Hashing.murmur3_128()
-        .hashBytes(key)
-        .asBytes();
-    return ByteBuffer.wrap(b)
-        .order(ByteOrder.LITTLE_ENDIAN);
+    final byte[] b = Hashing.murmur3_128().hashBytes(key).asBytes();
+    return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
   }
 
   byte[] serialize() {

@@ -18,10 +18,10 @@ import java.util.TreeMap;
  * <h3>Tombstone sentinel</h3>
  *
  * <p>Deleted keys are stored in the {@code TreeMap} with the value {@link
- * com.petwal.engine.sstable.SSTableConstants#TOMBSTONE_BYTES} (an empty byte array). This
- * preserves the key's presence in the map so that subsequent reads find the tombstone before
- * descending to SSTables. The sentinel is converted to a {@code null} value when producing
- * {@link Entry} objects for the flush path.
+ * com.petwal.engine.sstable.SSTableConstants#TOMBSTONE_BYTES} (an empty byte array). This preserves
+ * the key's presence in the map so that subsequent reads find the tombstone before descending to
+ * SSTables. The sentinel is converted to a {@code null} value when producing {@link Entry} objects
+ * for the flush path.
  */
 public final class MemTable {
 

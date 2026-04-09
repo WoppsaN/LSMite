@@ -8,10 +8,10 @@ import java.util.Optional;
 /**
  * Application entry point for the LSMite TCP server.
  *
- * <p>Parses optional command-line flags ({@code --port}, {@code --data-dir},
- * {@code --memtable-size}), constructs an {@link com.petwal.engine.LsmStore}, starts an
- * {@link com.petwal.server.LsmServer}, and registers a JVM shutdown hook that flushes and closes
- * the store on SIGINT / SIGTERM.
+ * <p>Parses optional command-line flags ({@code --port}, {@code --data-dir}, {@code
+ * --memtable-size}), constructs an {@link com.petwal.engine.LsmStore}, starts an {@link
+ * com.petwal.server.LsmServer}, and registers a JVM shutdown hook that flushes and closes the store
+ * on SIGINT / SIGTERM.
  */
 public class Main {
 

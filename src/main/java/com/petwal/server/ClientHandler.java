@@ -14,9 +14,9 @@ import java.net.SocketException;
 /**
  * Per-connection handler that parses line-oriented text commands and dispatches them to the store.
  *
- * <p>Supported commands: {@code PUT <key> <value>}, {@code GET <key>}, {@code DELETE <key>}.
- * Each command and response is terminated by a newline. Values may contain spaces; the line is
- * split into at most three tokens so that everything after the key is treated as the value.
+ * <p>Supported commands: {@code PUT <key> <value>}, {@code GET <key>}, {@code DELETE <key>}. Each
+ * command and response is terminated by a newline. Values may contain spaces; the line is split
+ * into at most three tokens so that everything after the key is treated as the value.
  */
 final class ClientHandler implements Runnable {
 

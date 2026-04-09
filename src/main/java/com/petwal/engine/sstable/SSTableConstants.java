@@ -36,7 +36,10 @@ public final class SSTableConstants {
    */
   public static final int LENGTH_SIZE = Integer.BYTES;
 
-  /** Byte size of every 8-byte offset field in the format: {@code dataOffset}, {@code bloomOffset}, and {@code indexOffset}. */
+  /**
+   * Byte size of every 8-byte offset field in the format: {@code dataOffset}, {@code bloomOffset},
+   * and {@code indexOffset}.
+   */
   public static final int OFFSET_SIZE = Long.BYTES;
 
   /** Byte size of the record header: {@code keyLen:4 + valueLen:4}. */
@@ -53,5 +56,4 @@ public final class SSTableConstants {
    * byte array (rather than {@code null}) keeps the map from losing the tombstone entry.
    */
   public static final byte[] TOMBSTONE_BYTES = new byte[0];
-
 }
